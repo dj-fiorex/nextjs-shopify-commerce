@@ -6,6 +6,7 @@
     "start": "next start",
     "prettier": "prettier --write --ignore-unknown .",
     "prettier:check": "prettier --check --ignore-unknown .",
+    "seed": "node scripts/seed-shopify.mjs",
     "test": "pnpm prettier:check"
   },
   "dependencies": {
@@ -25,6 +26,7 @@
     "@types/node": "22.13.10",
     "@types/react": "19.0.12",
     "@types/react-dom": "19.0.4",
+    "baseline-browser-mapping": "^2.10.43",
     "postcss": "^8.5.3",
     "prettier": "3.5.3",
     "prettier-plugin-tailwindcss": "^0.6.11",
