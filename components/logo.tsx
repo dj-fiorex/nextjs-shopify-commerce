@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { LOGO_HEIGHT, LOGO_PATH, LOGO_WIDTH, SITE_NAME } from "lib/brand";
+import { LOGO, SITE_NAME } from "lib/brand";
 import Image from "next/image";
 
 /**
@@ -15,10 +15,10 @@ export default function Logo({
 }) {
   return (
     <Image
-      src={LOGO_PATH}
+      src={LOGO.path}
       alt={`${SITE_NAME} logo`}
-      width={LOGO_WIDTH}
-      height={LOGO_HEIGHT}
+      width={LOGO.width}
+      height={LOGO.height}
       priority={priority}
       className={clsx("w-auto", className)}
     />

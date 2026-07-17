@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import { LOGO_PATH, SITE_NAME } from "lib/brand";
+import { LOGO, SITE_NAME } from "lib/brand";
 import { ImageResponse } from "next/og";
 import { join } from "path";
 
@@ -10,16 +10,13 @@ export type Props = {
 export default async function OpengraphImage(
   props?: Props,
 ): Promise<ImageResponse> {
-  const { title } = {
-    ...{
-      title: SITE_NAME,
-    },
-    ...props,
-  };
+  // Callers may pass `{ title: undefined }` for an untitled collection, so
+  // fall back to the site name rather than rendering (or upper-casing) nothing.
+  const title = props?.title || SITE_NAME;
 
   const [fontFile, logoFile] = await Promise.all([
     readFile(join(process.cwd(), "./fonts/Inter-Bold.ttf")),
-    readFile(join(process.cwd(), "public", LOGO_PATH)),
+    readFile(join(process.cwd(), "public", LOGO.path)),
   ]);
   const font = Uint8Array.from(fontFile).buffer;
   // Satori has no access to /public over HTTP, so the mark is inlined.

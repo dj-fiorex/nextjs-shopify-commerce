@@ -7,9 +7,16 @@ export const SITE_NAME = process.env.SITE_NAME || "CrazySociety";
 
 export const COMPANY_NAME = process.env.COMPANY_NAME || SITE_NAME;
 
-/** The butterfly mark, as served to the browser and to the OG image renderer. */
-export const LOGO_PATH = "/brand/crazysociety-butterfly.png";
+export const SITE_DESCRIPTION =
+  "CrazySociety — Italian streetwear. Raw, mono, unmistakable.";
 
-/** Intrinsic size of the mark; it is a wide 1.47:1 lockup, not a square. */
-export const LOGO_WIDTH = 487;
-export const LOGO_HEIGHT = 332;
+/**
+ * The butterfly mark: black ink on transparency, so it is only ever placed on
+ * the brand's white base. It is a wide 1.47:1 lockup, not a square, so its
+ * intrinsic dimensions travel with the path wherever the mark is drawn.
+ */
+export const LOGO = {
+  path: "/brand/crazysociety-butterfly.png",
+  width: 487,
+  height: 332,
+} as const;
