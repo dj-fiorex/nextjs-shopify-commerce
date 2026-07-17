@@ -3,6 +3,19 @@
 @plugin "@tailwindcss/container-queries";
 @plugin "@tailwindcss/typography";
 
+/*
+ * CrazySociety brand theme: white base, black ink, mono product labels and
+ * prices. The palette is fixed — the site renders identically whatever the
+ * visitor's OS colour-scheme preference is, so no `dark:` variant belongs
+ * anywhere in this codebase.
+ */
+@theme {
+  --color-brand-base: #ffffff;
+  --color-brand-ink: #000000;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @layer base {
   *,
   ::after,
@@ -11,11 +24,14 @@
   ::file-selector-button {
     border-color: var(--color-gray-200, currentColor);
   }
-}
 
-@media (prefers-color-scheme: dark) {
+  /*
+   * `only light` opts the document out of the UA's dark-mode treatment of
+   * form controls and scrollbars, which otherwise follows the OS preference
+   * even though the palette above never does.
+   */
   html {
-    color-scheme: dark;
+    color-scheme: only light;
   }
 }
 
@@ -28,5 +44,5 @@
 a,
 input,
 button {
-  @apply focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-50 dark:focus-visible:ring-neutral-600 dark:focus-visible:ring-offset-neutral-900;
+  @apply focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-2 focus-visible:ring-offset-neutral-50;
 }
