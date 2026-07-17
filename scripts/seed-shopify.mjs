@@ -33,6 +33,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { siteConfig } from "../lib/site-config.mjs";
 import {
+  CATALOG_CURRENCY,
   CRAZYSOCIETY_HANDLES,
   CRAZYSOCIETY_PRODUCTS,
   SIZE_OPTION,
@@ -162,8 +163,20 @@ function assertNoUserErrors(payload, label) {
 // --- steps ---------------------------------------------------------------
 
 async function verifyAuth() {
-  const data = await gql(`{ shop { name } }`);
-  console.log(`Connected to shop: ${data.shop.name} (${domain})`);
+  const data = await gql(`{ shop { name currencyCode } }`);
+  const { name, currencyCode } = data.shop;
+  console.log(`Connected to shop: ${name} (${domain}, ${currencyCode})`);
+
+  // Prices seed as bare amounts — Shopify has no currency field on a variant,
+  // so they take the store's currency. On a store that isn't EUR the catalog
+  // would seed as $59.90 and the seed would still report success.
+  if (currencyCode !== CATALOG_CURRENCY) {
+    console.warn(
+      `! Store currency is ${currencyCode}, but the catalog is priced in ${CATALOG_CURRENCY}.\n` +
+        `  Prices will seed as ${currencyCode} amounts. Set the store's currency to\n` +
+        `  ${CATALOG_CURRENCY} (Settings > General) before relying on these prices.`,
+    );
+  }
 }
 
 async function getPublications() {
@@ -238,15 +251,14 @@ async function attachMedia(productId, images, alt, label) {
   const errors = result.productCreateMedia.mediaUserErrors;
   if (errors?.length) {
     console.warn(`  ! ${label}: ${errors[0].message}`);
-    return false;
+    return;
   }
   console.log(`  + ${images.length} image(s) queued for ${label}`);
-  return true;
 }
 
-// Attaches picsum placeholders to the template's own sample products. Catalog
-// products are excluded — they get real photography in ensureCatalogImages().
-async function ensureProductImages() {
+// Catalog products are excluded — they get real photography from
+// ensureCatalogImages() rather than a picsum placeholder.
+async function ensureSampleProductImages() {
   const data = await gql(
     `{ products(first: 50, query: "status:active") { nodes { id title handle featuredMedia { id } } } }`,
   );
@@ -299,14 +311,30 @@ async function findProductByHandle(handle) {
   return data.products.nodes[0] ?? null;
 }
 
-// --- CrazySociety catalog -------------------------------------------------
-
 const PRODUCT_SET = `mutation productSet($input: ProductSetInput!) {
   productSet(input: $input, synchronous: true) {
     product { id title handle }
     userErrors { field message }
   }
 }`;
+
+// Shopify fetches `files` from their source URLs and the fetch can fail. Create
+// the product anyway rather than aborting the seed — the image passes attach
+// the media afterwards, on this run or a later one.
+async function createProduct(input, label) {
+  let data = await gql(PRODUCT_SET, { input });
+  if (data.productSet.userErrors?.length) {
+    console.warn(
+      `  ! ${label}: ${data.productSet.userErrors[0].message} — retrying without images`,
+    );
+    const { files, ...withoutFiles } = input;
+    data = await gql(PRODUCT_SET, { input: withoutFiles });
+    assertNoUserErrors(data.productSet, `productSet(${label})`);
+  }
+  return data.productSet.product;
+}
+
+// --- CrazySociety catalog -------------------------------------------------
 
 function catalogProductInput(product) {
   return {
@@ -335,33 +363,32 @@ function catalogProductInput(product) {
   };
 }
 
+/** @returns {Promise<Map<string, string>>} catalog handle -> product id */
 async function ensureCatalogProducts(publications) {
   console.log("\nSeeding the CrazySociety catalog...");
+  const ids = new Map();
+
   for (const product of CRAZYSOCIETY_PRODUCTS) {
     const found = await findProductByHandle(product.handle);
     if (found) {
       console.log(`  = product exists: ${product.handle}`);
       await publish(found.id, publications, product.handle);
+      ids.set(product.handle, found.id);
       continue;
     }
 
-    const input = catalogProductInput(product);
-    let data = await gql(PRODUCT_SET, { input });
-    if (data.productSet.userErrors?.length) {
-      // Image fetch can fail; create the product anyway and let
-      // ensureCatalogImages() attach the photography on this or a later run.
-      console.warn(
-        `  ! ${product.handle}: ${data.productSet.userErrors[0].message} — retrying without images`,
-      );
-      const { files, ...withoutFiles } = input;
-      data = await gql(PRODUCT_SET, { input: withoutFiles });
-      assertNoUserErrors(data.productSet, `productSet(${product.handle})`);
-    }
+    const created = await createProduct(
+      catalogProductInput(product),
+      product.handle,
+    );
     console.log(
       `  + created product: ${product.handle}${product.soldOut ? " (sold out)" : ""}`,
     );
-    await publish(data.productSet.product.id, publications, product.handle);
+    await publish(created.id, publications, product.handle);
+    ids.set(product.handle, created.id);
   }
+
+  return ids;
 }
 
 // Covers the product-created-but-image-fetch-failed case above: without this a
@@ -389,7 +416,7 @@ async function ensureCatalogImages() {
   }
 }
 
-async function ensureProducts(publications) {
+async function ensureSampleProducts(publications) {
   const existing = await gql(
     `{ products(first: 50, query: "status:active") { nodes { id title handle } } }`,
   );
@@ -434,23 +461,7 @@ async function ensureProducts(publications) {
       ],
     };
 
-    const mutation = `mutation productSet($input: ProductSetInput!) {
-      productSet(input: $input, synchronous: true) {
-        product { id title handle }
-        userErrors { field message }
-      }
-    }`;
-
-    let data = await gql(mutation, { input });
-    if (data.productSet.userErrors?.length) {
-      // Image fetch can fail; retry without the image rather than aborting.
-      console.warn(
-        `  ! ${sample.handle}: ${data.productSet.userErrors[0].message} — retrying without image`,
-      );
-      const { files, ...withoutFiles } = input;
-      data = await gql(mutation, { input: withoutFiles });
-      assertNoUserErrors(data.productSet, `productSet(${sample.handle})`);
-    }
+    await createProduct(input, sample.handle);
     console.log(`  + created product: ${sample.handle}`);
   }
 
@@ -604,13 +615,13 @@ try {
 
   const publications = await getPublications();
 
-  await ensureCatalogProducts(publications);
+  const catalogIds = await ensureCatalogProducts(publications);
   await ensureCatalogImages();
 
   // Runs after the catalog, so a seeded store is already past the 3-product
   // threshold and no Acme samples are created.
-  const products = await ensureProducts(publications);
-  await ensureProductImages();
+  const products = await ensureSampleProducts(publications);
+  await ensureSampleProductImages();
   await waitForProductImages();
 
   if (products.length < 3) {
@@ -619,11 +630,14 @@ try {
     );
   }
 
-  const byHandle = new Map(products.map((p) => [p.handle, p.id]));
+  // Ids come from the catalog pass rather than a paginated product scan, so
+  // membership stays correct on a store with more products than one page.
   const collectionProductIds = (handle) =>
-    productsInCollection(handle)
-      .map((p) => byHandle.get(p.handle))
-      .filter(Boolean);
+    productsInCollection(handle).map((p) => {
+      const id = catalogIds.get(p.handle);
+      if (!id) throw new Error(`No product id seeded for ${p.handle}`);
+      return id;
+    });
 
   await ensureCollection(
     SUMMER_DROP_COLLECTION,

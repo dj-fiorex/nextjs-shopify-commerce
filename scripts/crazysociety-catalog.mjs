@@ -28,6 +28,12 @@ export const SIZES = ["S", "M", "L", "XL", "XXL"];
 
 export const SIZE_OPTION = "Size";
 
+/**
+ * `price` below is a bare amount, so it takes the store's own currency —
+ * the seed checks the store matches this rather than trusting it.
+ */
+export const CATALOG_CURRENCY = "EUR";
+
 const CDN = "https://cdn.shopify.com/s/files/1/1038/5037/7558/files";
 
 export const CRAZYSOCIETY_PRODUCTS = [
