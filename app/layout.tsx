@@ -1,4 +1,5 @@
 import { CartProvider } from "components/cart/cart-context";
+import AnnouncementBar from "components/layout/announcement-bar";
 import { Navbar } from "components/layout/navbar";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
@@ -33,6 +34,7 @@ export default async function RootLayout({
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="bg-brand-base text-brand-ink selection:bg-brand-ink selection:text-brand-base">
         <CartProvider cartPromise={cart}>
+          <AnnouncementBar />
           <Navbar />
           <main>
             {children}
