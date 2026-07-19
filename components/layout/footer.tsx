@@ -1,53 +1,84 @@
+import Logo from "components/logo";
+import PaymentIcons from "components/layout/payment-icons";
+import SocialLinks from "components/layout/social-icons";
+import { COMPANY_NAME, SITE_DESCRIPTION, SITE_NAME } from "lib/brand";
+import { FOOTER_GROUPS } from "lib/chrome";
 import Link from "next/link";
 
-import FooterMenu from "components/layout/footer-menu";
-import Logo from "components/logo";
-import { COMPANY_NAME, SITE_NAME } from "lib/brand";
-import { getMenu } from "lib/shopify";
-import { Suspense } from "react";
-
-export default async function Footer() {
+/**
+ * The sitewide footer (issue #4): brand mark and social row, the SERVICE /
+ * LEGAL / MORE link groups, and a lower bar with the copyright and
+ * accepted-payment badges. Link groups are static config (see `lib/chrome.ts`)
+ * so the copy stays structured for later localisation.
+ */
+export default function Footer() {
   const currentYear = new Date().getFullYear();
   const copyrightDate = 2023 + (currentYear > 2023 ? `-${currentYear}` : "");
-  const skeleton = "w-full h-6 animate-pulse rounded-sm bg-neutral-200";
-  const menu = await getMenu("next-js-frontend-footer-menu");
   const copyrightName = COMPANY_NAME;
+  const linkClasses =
+    "text-neutral-500 underline-offset-4 transition-colors hover:text-brand-ink hover:underline";
 
   return (
-    <footer className="text-sm text-neutral-500">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 border-t border-neutral-200 px-6 py-12 text-sm md:flex-row md:gap-12 md:px-4 min-[1320px]:px-0">
-        <div>
-          <Link className="flex items-center gap-2 text-black md:pt-1" href="/">
-            <Logo className="h-5" />
-            <span className="font-mono tracking-widest uppercase">
-              {SITE_NAME}
-            </span>
+    <footer className="border-t border-neutral-200 text-brand-ink">
+      <div className="mx-auto grid w-full max-w-7xl grid-cols-2 gap-8 px-6 py-12 md:grid-cols-4 md:gap-12 min-[1320px]:px-0">
+        <div className="col-span-2 flex flex-col gap-4 md:col-span-1">
+          <Link
+            href="/"
+            aria-label={`${SITE_NAME} home`}
+            className="inline-flex w-fit items-center"
+          >
+            <Logo className="h-6" />
+            <span className="sr-only">{SITE_NAME}</span>
           </Link>
+          <p className="max-w-xs text-sm text-neutral-500">
+            {SITE_DESCRIPTION}
+          </p>
+          <SocialLinks />
         </div>
-        <Suspense
-          fallback={
-            <div className="flex h-[188px] w-[200px] flex-col gap-2">
-              <div className={skeleton} />
-              <div className={skeleton} />
-              <div className={skeleton} />
-              <div className={skeleton} />
-              <div className={skeleton} />
-              <div className={skeleton} />
-            </div>
-          }
-        >
-          <FooterMenu menu={menu} />
-        </Suspense>
+
+        {FOOTER_GROUPS.map((group) => (
+          <nav key={group.heading} aria-label={group.heading}>
+            <h2 className="font-mono text-xs tracking-widest text-brand-ink uppercase">
+              {group.heading}
+            </h2>
+            <ul className="mt-4 flex flex-col gap-2 text-sm">
+              {group.links.map((link) => (
+                <li key={link.label}>
+                  {link.external ? (
+                    <a
+                      href={link.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={linkClasses}
+                    >
+                      {link.label}
+                    </a>
+                  ) : (
+                    <Link
+                      href={link.href}
+                      prefetch={true}
+                      className={linkClasses}
+                    >
+                      {link.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ))}
       </div>
-      <div className="border-t border-neutral-200 py-6 text-sm">
-        <div className="mx-auto flex w-full max-w-7xl flex-col items-center gap-1 px-4 md:flex-row md:gap-0 md:px-4 min-[1320px]:px-0">
-          <p>
+
+      <div className="border-t border-neutral-200">
+        <div className="mx-auto flex w-full max-w-7xl flex-col-reverse items-center gap-4 px-6 py-6 md:flex-row md:justify-between min-[1320px]:px-0">
+          <p className="text-xs text-neutral-500">
             &copy; {copyrightDate} {copyrightName}
             {copyrightName.length && !copyrightName.endsWith(".")
               ? "."
               : ""}{" "}
             All rights reserved.
           </p>
+          <PaymentIcons />
         </div>
       </div>
     </footer>
