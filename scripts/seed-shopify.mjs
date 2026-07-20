@@ -9,6 +9,10 @@
  *                  `hidden-homepage-carousel`       (homepage carousel, needs >= 1 product)
  *   - Menus:       `next-js-frontend-header-menu`   (navbar)
  *                  `next-js-frontend-footer-menu`   (footer)
+ *   - Homepage:    a `homepage` metaobject definition + one populated entry the
+ *                  client edits from admin (hero/lookbook/promo video/lifestyle
+ *                  media uploaded to Shopify Files, drop + best-sellers refs,
+ *                  About Us copy, announcement text)
  *   - Pages:       about, terms-conditions, shipping-return-policy,
  *                  privacy-policy, frequently-asked-questions
  *   - Sample products (only if the store has fewer than 3), published to all
@@ -19,7 +23,9 @@
  *   - Credentials for a Dev Dashboard app (dev.shopify.com) installed on the
  *     store, with access scopes: read_products, write_products,
  *     read_publications, write_publications, write_online_store_navigation,
- *     write_content. Either:
+ *     write_content, write_files, read_metaobject_definitions,
+ *     write_metaobject_definitions, read_metaobjects, write_metaobjects.
+ *     Either:
  *       SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET  (from the app's Settings
  *         page — the script exchanges them for a 24h admin token), or
  *       SHOPIFY_ADMIN_ACCESS_TOKEN  (a shpat_... token, if you have one)
@@ -53,6 +59,26 @@ const {
 
 const HEADER_MENU = "next-js-frontend-header-menu";
 const FOOTER_MENU = "next-js-frontend-footer-menu";
+
+const HOMEPAGE = siteConfig.metaobjects.homepage;
+
+// A sample clip for the promo video slot. Its bytes are pushed to Shopify Files
+// through a staged upload (see `stageAndUploadVideo` — `fileCreate` won't ingest
+// video straight from a URL like it does images). Swapped for the brand's own
+// footage from admin, like every seeded asset.
+const HOMEPAGE_VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
+
+// Placeholder marketing copy for the seeded homepage entry. The announcement
+// phrases mirror the storefront fallback in `lib/chrome.ts` so an unedited store
+// reads the same either way; everything here is client-editable in admin.
+const HOMEPAGE_CONTENT = {
+  dropTitle: "Summer Drop",
+  aboutHeading: "Born on Italian streets",
+  aboutBody:
+    "CrazySociety is raw, mono, unmistakable — Italian streetwear cut for the " +
+    "people who wear the city, not the trend. Every drop is a limited run.",
+  announcement: ["Shipping in 24/48 hours", "Free exchanges", "Easy returns"],
+};
 
 const SAMPLE_PRODUCTS = [
   { handle: "acme-t-shirt", title: "Acme T-Shirt", price: "20.00" },
@@ -104,7 +130,9 @@ if (!domain || (!adminToken && !(clientId && clientSecret))) {
       "  SHOPIFY_ADMIN_ACCESS_TOKEN=shpat_...\n\n" +
       "The app must be installed on the store with these access scopes:\n" +
       "read_products, write_products, read_publications, write_publications,\n" +
-      "write_online_store_navigation, write_content",
+      "write_online_store_navigation, write_content, write_files,\n" +
+      "read_metaobject_definitions, write_metaobject_definitions,\n" +
+      "read_metaobjects, write_metaobjects",
   );
   process.exit(1);
 }
@@ -217,8 +245,8 @@ async function publish(id, publications, label) {
 
 // Shopify's media fetcher rejects picsum's 302 redirect, so resolve it to the
 // final signed fastly URL first and hand Shopify a direct image/jpeg link.
-async function resolveImageUrl(seed) {
-  const source = `https://picsum.photos/seed/${seed}/1200/1200.jpg`;
+async function resolveImageUrl(seed, width = 1200, height = 1200) {
+  const source = `https://picsum.photos/seed/${seed}/${width}/${height}.jpg`;
   try {
     const res = await fetch(source, { method: "HEAD", redirect: "follow" });
     const type = res.headers.get("content-type") || "";
@@ -226,7 +254,7 @@ async function resolveImageUrl(seed) {
   } catch {
     // fall through to placeholder
   }
-  return `https://placehold.co/1200x1200/jpg?text=${encodeURIComponent(seed)}`;
+  return `https://placehold.co/${width}x${height}/jpg?text=${encodeURIComponent(seed)}`;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -542,6 +570,7 @@ async function ensureCollection(
   }
 
   await publish(collection.id, publications, handle);
+  return collection.id;
 }
 
 async function ensurePages() {
@@ -605,6 +634,294 @@ async function ensureMenu(handle, title, items) {
   console.log(`+ created menu: ${handle}`);
 }
 
+// --- homepage metaobject --------------------------------------------------
+
+// The definition the client edits from admin. `PUBLIC_READ` storefront access is
+// what exposes the entry to the Storefront API the app reads — without it the
+// homepage query comes back null and the site falls back to its default copy.
+async function ensureHomepageDefinition() {
+  const existing = await gql(
+    `query def($type: String!) {
+      metaobjectDefinitionByType(type: $type) { id type }
+    }`,
+    { type: HOMEPAGE.type },
+  );
+  if (existing.metaobjectDefinitionByType) {
+    console.log(`= metaobject definition exists: ${HOMEPAGE.type}`);
+    return;
+  }
+
+  const f = HOMEPAGE.fields;
+  const data = await gql(
+    `mutation defCreate($definition: MetaobjectDefinitionCreateInput!) {
+      metaobjectDefinitionCreate(definition: $definition) {
+        metaobjectDefinition { id type }
+        userErrors { field message code }
+      }
+    }`,
+    {
+      definition: {
+        name: "Homepage",
+        type: HOMEPAGE.type,
+        access: { storefront: "PUBLIC_READ" },
+        fieldDefinitions: [
+          { key: f.heroImage, name: "Hero image", type: "file_reference" },
+          {
+            key: f.dropTitle,
+            name: "Drop title",
+            type: "single_line_text_field",
+          },
+          {
+            key: f.dropCollection,
+            name: "Drop collection",
+            type: "collection_reference",
+          },
+          {
+            key: f.lookbookImage,
+            name: "Lookbook image",
+            type: "file_reference",
+          },
+          { key: f.promoVideo, name: "Promo video", type: "file_reference" },
+          {
+            key: f.bestSellersCollection,
+            name: "Best sellers collection",
+            type: "collection_reference",
+          },
+          {
+            key: f.lifestyleImage,
+            name: "Lifestyle image",
+            type: "file_reference",
+          },
+          {
+            key: f.aboutHeading,
+            name: "About heading",
+            type: "single_line_text_field",
+          },
+          {
+            key: f.aboutBody,
+            name: "About body",
+            type: "multi_line_text_field",
+          },
+          {
+            key: f.announcement,
+            name: "Announcement",
+            type: "list.single_line_text_field",
+          },
+        ],
+      },
+    },
+  );
+  assertNoUserErrors(
+    data.metaobjectDefinitionCreate,
+    "metaobjectDefinitionCreate",
+  );
+  console.log(`+ created metaobject definition: ${HOMEPAGE.type}`);
+}
+
+async function findHomepageEntry() {
+  const data = await gql(
+    `query entry($handle: MetaobjectHandleInput!) {
+      metaobjectByHandle(handle: $handle) {
+        id
+        handle
+        fields { key value }
+      }
+    }`,
+    { handle: { type: HOMEPAGE.type, handle: HOMEPAGE.handle } },
+  );
+  return data.metaobjectByHandle;
+}
+
+// Uploads a media asset to Shopify Files and returns its GID. The file is
+// referenced by id straight away; Shopify finishes processing it asynchronously.
+async function uploadFile(url, contentType, alt) {
+  const data = await gql(
+    `mutation fileCreate($files: [FileCreateInput!]!) {
+      fileCreate(files: $files) {
+        files { id fileStatus }
+        userErrors { field message code }
+      }
+    }`,
+    { files: [{ originalSource: url, alt, contentType }] },
+  );
+  assertNoUserErrors(data.fileCreate, `fileCreate(${alt})`);
+  const file = data.fileCreate.files?.[0];
+  if (!file?.id) throw new Error(`fileCreate(${alt}) returned no file id`);
+  return file.id;
+}
+
+// Uploads a video to Shopify Files and returns its GID. Unlike images, `fileCreate`
+// won't fetch a video from an arbitrary URL, so the bytes go through a staged
+// upload first: reserve a target, POST the file to it, then create the File from
+// the returned resource URL. Shopify processes (transcodes) the video afterwards.
+async function stageAndUploadVideo(sourceUrl, filename, alt) {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`fetch video failed: HTTP ${res.status}`);
+  const mimeType = res.headers.get("content-type") || "video/mp4";
+  const bytes = Buffer.from(await res.arrayBuffer());
+
+  const staged = await gql(
+    `mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets { url resourceUrl parameters { name value } }
+        userErrors { field message }
+      }
+    }`,
+    {
+      input: [
+        {
+          resource: "VIDEO",
+          filename,
+          mimeType,
+          httpMethod: "POST",
+          fileSize: String(bytes.length),
+        },
+      ],
+    },
+  );
+  assertNoUserErrors(staged.stagedUploadsCreate, "stagedUploadsCreate");
+  const target = staged.stagedUploadsCreate.stagedTargets?.[0];
+  if (!target?.url || !target.resourceUrl) {
+    throw new Error("stagedUploadsCreate returned no upload target");
+  }
+
+  // The staged target is a cloud bucket: send its signed parameters as form
+  // fields first, then the file last, exactly as returned.
+  const form = new FormData();
+  for (const { name, value } of target.parameters) form.append(name, value);
+  form.append("file", new Blob([bytes], { type: mimeType }), filename);
+
+  const upload = await fetch(target.url, { method: "POST", body: form });
+  if (!upload.ok) {
+    const detail = await upload.text().catch(() => "");
+    throw new Error(
+      `staged upload failed: HTTP ${upload.status} ${detail.slice(0, 160)}`,
+    );
+  }
+
+  return uploadFile(target.resourceUrl, "VIDEO", alt);
+}
+
+// Adds the promo video to an existing entry that lacks it. Videos need a staged
+// upload, which can fail (or wasn't supported by an earlier seed), so an entry
+// can exist without one; healing just that field never touches anything the
+// client may have edited. Best-effort — a hiccup mustn't abort the seed.
+async function ensureHomepagePromoVideo(entry) {
+  const key = HOMEPAGE.fields.promoVideo;
+  const alreadySet = entry.fields?.some(
+    (field) => field.key === key && field.value,
+  );
+  if (alreadySet) {
+    return;
+  }
+  try {
+    const value = await stageAndUploadVideo(
+      HOMEPAGE_VIDEO_URL,
+      "crazysociety-promo.mp4",
+      "CrazySociety promo",
+    );
+    const data = await gql(
+      `mutation metaobjectUpdate($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+        metaobjectUpdate(id: $id, metaobject: $metaobject) {
+          metaobject { id }
+          userErrors { field message code }
+        }
+      }`,
+      { id: entry.id, metaobject: { fields: [{ key, value }] } },
+    );
+    assertNoUserErrors(data.metaobjectUpdate, "metaobjectUpdate(promo_video)");
+    console.log(`  + added promo video to ${HOMEPAGE.handle}`);
+  } catch (e) {
+    console.warn(`  ! promo video skipped: ${e.message}`);
+  }
+}
+
+// Creates the one populated homepage entry, uploading its media first. It runs
+// only when the entry is missing: the client edits this entry in admin, so a
+// re-run must be idempotent and must never clobber their content. The lone
+// exception is a missing promo video, which is added without disturbing the rest.
+async function ensureHomepageEntry(collectionGids) {
+  const existing = await findHomepageEntry();
+  if (existing) {
+    console.log(
+      `= metaobject entry exists: ${HOMEPAGE.handle} — left untouched`,
+    );
+    await ensureHomepagePromoVideo(existing);
+    return;
+  }
+
+  console.log("Uploading homepage media to Shopify Files...");
+  const f = HOMEPAGE.fields;
+  const fields = [];
+
+  const hero = await resolveImageUrl("crazysociety-hero", 1600, 2000);
+  fields.push({
+    key: f.heroImage,
+    value: await uploadFile(hero, "IMAGE", "CrazySociety hero"),
+  });
+
+  const lookbook = await resolveImageUrl("crazysociety-lookbook", 1600, 2000);
+  fields.push({
+    key: f.lookbookImage,
+    value: await uploadFile(lookbook, "IMAGE", "CrazySociety lookbook"),
+  });
+
+  const lifestyle = await resolveImageUrl("crazysociety-lifestyle", 2000, 1200);
+  fields.push({
+    key: f.lifestyleImage,
+    value: await uploadFile(lifestyle, "IMAGE", "CrazySociety lifestyle"),
+  });
+
+  // Still best-effort: a video fetch or staged-upload hiccup shouldn't abort the
+  // whole seed — the entry can ship without the (not-yet-rendered) promo clip.
+  try {
+    fields.push({
+      key: f.promoVideo,
+      value: await stageAndUploadVideo(
+        HOMEPAGE_VIDEO_URL,
+        "crazysociety-promo.mp4",
+        "CrazySociety promo",
+      ),
+    });
+  } catch (e) {
+    console.warn(`  ! promo video skipped: ${e.message}`);
+  }
+
+  fields.push({ key: f.dropTitle, value: HOMEPAGE_CONTENT.dropTitle });
+  fields.push({ key: f.aboutHeading, value: HOMEPAGE_CONTENT.aboutHeading });
+  fields.push({ key: f.aboutBody, value: HOMEPAGE_CONTENT.aboutBody });
+  fields.push({
+    key: f.announcement,
+    value: JSON.stringify(HOMEPAGE_CONTENT.announcement),
+  });
+
+  if (collectionGids.summerDrop) {
+    fields.push({ key: f.dropCollection, value: collectionGids.summerDrop });
+  }
+  if (collectionGids.bestSellers) {
+    fields.push({
+      key: f.bestSellersCollection,
+      value: collectionGids.bestSellers,
+    });
+  }
+
+  const data = await gql(
+    `mutation metaobjectCreate($metaobject: MetaobjectCreateInput!) {
+      metaobjectCreate(metaobject: $metaobject) {
+        metaobject { id handle }
+        userErrors { field message code }
+      }
+    }`,
+    {
+      metaobject: { type: HOMEPAGE.type, handle: HOMEPAGE.handle, fields },
+    },
+  );
+  assertNoUserErrors(data.metaobjectCreate, "metaobjectCreate");
+  console.log(
+    `+ created metaobject entry: ${HOMEPAGE.handle} (${fields.length} fields)`,
+  );
+}
+
 // --- main ----------------------------------------------------------------
 
 try {
@@ -639,14 +956,14 @@ try {
       return id;
     });
 
-  await ensureCollection(
+  const summerDropGid = await ensureCollection(
     SUMMER_DROP_COLLECTION,
     "Summer Drop",
     collectionProductIds(SUMMER_DROP_COLLECTION),
     publications,
     "The current seasonal drop, featured on the homepage.",
   );
-  await ensureCollection(
+  const bestSellersGid = await ensureCollection(
     BEST_SELLERS_COLLECTION,
     "Best Sellers",
     collectionProductIds(BEST_SELLERS_COLLECTION),
@@ -669,6 +986,14 @@ try {
     publications,
     'Products shown in the homepage carousel. Collections prefixed with "hidden-" are excluded from the search page.',
   );
+
+  // Homepage content model: the definition + one populated entry the client
+  // edits from admin. References the drop and best-sellers collections above.
+  await ensureHomepageDefinition();
+  await ensureHomepageEntry({
+    summerDrop: summerDropGid,
+    bestSellers: bestSellersGid,
+  });
 
   const pages = await ensurePages();
 

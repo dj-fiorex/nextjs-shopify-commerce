@@ -4,6 +4,7 @@ import {
   TAGS,
 } from "lib/constants";
 import { isShopifyError } from "lib/type-guards";
+import { siteConfig } from "lib/site-config.mjs";
 import { ensureStartsWith } from "lib/utils";
 import {
   unstable_cacheLife as cacheLife,
@@ -25,6 +26,7 @@ import {
   getCollectionsQuery,
 } from "./queries/collection";
 import { getMenuQuery } from "./queries/menu";
+import { getHomepageMetaobjectQuery } from "./queries/metaobject";
 import { getPageQuery, getPagesQuery } from "./queries/page";
 import {
   getProductQuery,
@@ -35,6 +37,7 @@ import {
   Cart,
   Collection,
   Connection,
+  Homepage,
   Image,
   Menu,
   Page,
@@ -47,7 +50,9 @@ import {
   ShopifyCollectionProductsOperation,
   ShopifyCollectionsOperation,
   ShopifyCreateCartOperation,
+  ShopifyHomepageOperation,
   ShopifyMenuOperation,
+  ShopifyMetaobject,
   ShopifyPageOperation,
   ShopifyPagesOperation,
   ShopifyProduct,
@@ -68,6 +73,36 @@ type ExtractVariables<T> = T extends { variables: object }
   ? T["variables"]
   : never;
 
+// Number of times to attempt the network call before giving up.
+const STOREFRONT_FETCH_ATTEMPTS = 3;
+
+// Static prerendering runs these queries at build time, so a single dropped
+// connection to Shopify (a thrown `fetch failed`) would otherwise crash the whole
+// export. Retry the connection itself with a short backoff — never a GraphQL
+// error response, which is deterministic and handled by the caller.
+async function fetchStorefront(body: string, headers?: HeadersInit) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= STOREFRONT_FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": key,
+          ...headers,
+        },
+        body,
+      });
+    } catch (e) {
+      lastError = e;
+      if (attempt < STOREFRONT_FETCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function shopifyFetch<T>({
   headers,
   query,
@@ -82,18 +117,13 @@ export async function shopifyFetch<T>({
       throw new Error("SHOPIFY_STORE_DOMAIN environment variable is not set");
     }
 
-    const result = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token": key,
-        ...headers,
-      },
-      body: JSON.stringify({
+    const result = await fetchStorefront(
+      JSON.stringify({
         ...(query && { query }),
         ...(variables && { variables }),
       }),
-    });
+      headers,
+    );
 
     const body = await result.json();
 
@@ -141,7 +171,7 @@ const reshapeCart = (cart: ShopifyCart): Cart => {
 };
 
 const reshapeCollection = (
-  collection: ShopifyCollection
+  collection: ShopifyCollection,
 ): Collection | undefined => {
   if (!collection) {
     return undefined;
@@ -183,7 +213,7 @@ const reshapeImages = (images: Connection<Image>, productTitle: string) => {
 
 const reshapeProduct = (
   product: ShopifyProduct,
-  filterHiddenProducts: boolean = true
+  filterHiddenProducts: boolean = true,
 ) => {
   if (
     !product ||
@@ -217,6 +247,77 @@ const reshapeProducts = (products: ShopifyProduct[]) => {
   return reshapedProducts;
 };
 
+// Reshapes the generic `key`/`value`/`reference` metaobject fields into the
+// typed homepage model, keyed off the field names in `siteConfig`. Empty or
+// unset fields are dropped so callers can rely on presence checks.
+const reshapeHomepage = (
+  metaobject: ShopifyMetaobject,
+): Homepage | undefined => {
+  if (!metaobject) {
+    return undefined;
+  }
+
+  const keys = siteConfig.metaobjects.homepage.fields;
+  const byKey = new Map(metaobject.fields.map((field) => [field.key, field]));
+
+  const text = (key: string) => {
+    const value = byKey.get(key)?.value;
+    return value && value.trim() ? value : undefined;
+  };
+  const image = (key: string) => byKey.get(key)?.reference?.image;
+  const collection = (key: string) => {
+    const reference = byKey.get(key)?.reference;
+    return reference?.handle && reference.title
+      ? {
+          handle: reference.handle,
+          title: reference.title,
+          // Route reshaped here, like `reshapeCollection`, so the search-path
+          // literal lives in one place rather than at every call site.
+          path: `/search/${reference.handle}`,
+        }
+      : undefined;
+  };
+  const video = (key: string) => {
+    const reference = byKey.get(key)?.reference;
+    const source = reference?.sources?.[0];
+    return source
+      ? {
+          url: source.url,
+          mimeType: source.mimeType,
+          previewImage: reference?.previewImage,
+        }
+      : undefined;
+  };
+  const list = (key: string) => {
+    const value = byKey.get(key)?.value;
+    if (!value) {
+      return undefined;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      const items = Array.isArray(parsed)
+        ? parsed.filter((item) => typeof item === "string" && item.trim())
+        : [];
+      return items.length ? items : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  return {
+    heroImage: image(keys.heroImage),
+    dropTitle: text(keys.dropTitle),
+    dropCollection: collection(keys.dropCollection),
+    lookbookImage: image(keys.lookbookImage),
+    promoVideo: video(keys.promoVideo),
+    bestSellersCollection: collection(keys.bestSellersCollection),
+    lifestyleImage: image(keys.lifestyleImage),
+    aboutHeading: text(keys.aboutHeading),
+    aboutBody: text(keys.aboutBody),
+    announcement: list(keys.announcement),
+  };
+};
+
 export async function createCart(): Promise<Cart> {
   const res = await shopifyFetch<ShopifyCreateCartOperation>({
     query: createCartMutation,
@@ -226,7 +327,7 @@ export async function createCart(): Promise<Cart> {
 }
 
 export async function addToCart(
-  lines: { merchandiseId: string; quantity: number }[]
+  lines: { merchandiseId: string; quantity: number }[],
 ): Promise<Cart> {
   const cartId = (await cookies()).get("cartId")?.value!;
   const res = await shopifyFetch<ShopifyAddToCartOperation>({
@@ -253,7 +354,7 @@ export async function removeFromCart(lineIds: string[]): Promise<Cart> {
 }
 
 export async function updateCart(
-  lines: { id: string; merchandiseId: string; quantity: number }[]
+  lines: { id: string; merchandiseId: string; quantity: number }[],
 ): Promise<Cart> {
   const cartId = (await cookies()).get("cartId")?.value!;
   const res = await shopifyFetch<ShopifyUpdateCartOperation>({
@@ -292,7 +393,7 @@ export async function getCart(): Promise<Cart | undefined> {
 }
 
 export async function getCollection(
-  handle: string
+  handle: string,
 ): Promise<Collection | undefined> {
   "use cache";
   cacheTag(TAGS.collections);
@@ -323,7 +424,7 @@ export async function getCollectionProducts({
 
   if (!endpoint) {
     console.log(
-      `Skipping getCollectionProducts for '${collection}' - Shopify not configured`
+      `Skipping getCollectionProducts for '${collection}' - Shopify not configured`,
     );
     return [];
   }
@@ -343,7 +444,7 @@ export async function getCollectionProducts({
   }
 
   return reshapeProducts(
-    removeEdgesAndNodes(res.body.data.collection.products)
+    removeEdgesAndNodes(res.body.data.collection.products),
   );
 }
 
@@ -388,11 +489,41 @@ export async function getCollections(): Promise<Collection[]> {
     // Filter out the `hidden` collections.
     // Collections that start with `hidden-*` need to be hidden on the search page.
     ...reshapeCollections(shopifyCollections).filter(
-      (collection) => !collection.handle.startsWith("hidden")
+      (collection) => !collection.handle.startsWith("hidden"),
     ),
   ];
 
   return collections;
+}
+
+/**
+ * The homepage marketing content the client edits from Shopify admin. Returns
+ * `undefined` when the store isn't configured, the entry isn't seeded, or the
+ * query fails — this is read from the sitewide announcement bar, so it must
+ * degrade to the default copy rather than fault every page.
+ */
+export async function getHomepage(): Promise<Homepage | undefined> {
+  "use cache";
+  cacheTag(TAGS.homepage);
+  cacheLife("days");
+
+  if (!endpoint) {
+    return undefined;
+  }
+
+  const { type, handle } = siteConfig.metaobjects.homepage;
+
+  try {
+    const res = await shopifyFetch<ShopifyHomepageOperation>({
+      query: getHomepageMetaobjectQuery,
+      variables: { handle: { type, handle } },
+    });
+
+    return reshapeHomepage(res.body.data.metaobject);
+  } catch (e) {
+    console.error("Failed to fetch homepage metaobject:", e);
+    return undefined;
+  }
 }
 
 export async function getMenu(handle: string): Promise<Menu[]> {
@@ -405,12 +536,20 @@ export async function getMenu(handle: string): Promise<Menu[]> {
     return [];
   }
 
-  const res = await shopifyFetch<ShopifyMenuOperation>({
-    query: getMenuQuery,
-    variables: {
-      handle,
-    },
-  });
+  // The menu renders in the sitewide header, so it must not fault a page (or a
+  // static prerender) when the fetch fails — degrade to an empty menu instead.
+  let res;
+  try {
+    res = await shopifyFetch<ShopifyMenuOperation>({
+      query: getMenuQuery,
+      variables: {
+        handle,
+      },
+    });
+  } catch (e) {
+    console.error(`Failed to fetch menu '${handle}':`, e);
+    return [];
+  }
 
   return (
     res.body?.data?.menu?.items.map((item: { title: string; url: string }) => ({
@@ -461,7 +600,7 @@ export async function getProduct(handle: string): Promise<Product | undefined> {
 }
 
 export async function getProductRecommendations(
-  productId: string
+  productId: string,
 ): Promise<Product[]> {
   "use cache";
   cacheTag(TAGS.products);
@@ -516,17 +655,24 @@ export async function revalidate(req: NextRequest): Promise<NextResponse> {
     "products/delete",
     "products/update",
   ];
+  // The homepage content model — the client editing the entry lands here.
+  const metaobjectWebhooks = [
+    "metaobjects/create",
+    "metaobjects/delete",
+    "metaobjects/update",
+  ];
   const topic = (await headers()).get("x-shopify-topic") || "unknown";
   const secret = req.nextUrl.searchParams.get("secret");
   const isCollectionUpdate = collectionWebhooks.includes(topic);
   const isProductUpdate = productWebhooks.includes(topic);
+  const isMetaobjectUpdate = metaobjectWebhooks.includes(topic);
 
   if (!secret || secret !== process.env.SHOPIFY_REVALIDATION_SECRET) {
     console.error("Invalid revalidation secret.");
     return NextResponse.json({ status: 401 });
   }
 
-  if (!isCollectionUpdate && !isProductUpdate) {
+  if (!isCollectionUpdate && !isProductUpdate && !isMetaobjectUpdate) {
     // We don't need to revalidate anything for any other topics.
     return NextResponse.json({ status: 200 });
   }
@@ -537,6 +683,10 @@ export async function revalidate(req: NextRequest): Promise<NextResponse> {
 
   if (isProductUpdate) {
     revalidateTag(TAGS.products, "seconds");
+  }
+
+  if (isMetaobjectUpdate) {
+    revalidateTag(TAGS.homepage, "seconds");
   }
 
   return NextResponse.json({ status: 200, revalidated: true, now: Date.now() });
