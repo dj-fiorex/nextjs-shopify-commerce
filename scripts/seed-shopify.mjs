@@ -62,13 +62,11 @@ const FOOTER_MENU = "next-js-frontend-footer-menu";
 
 const HOMEPAGE = siteConfig.metaobjects.homepage;
 
-// A sample clip for the promo video slot. Unlike images, `fileCreate` does not
-// ingest video from an arbitrary URL (Shopify wants a staged upload), so this is
-// expected to be rejected as "Invalid video url" and skipped — the promo video
-// isn't rendered yet (later ticket) and the client uploads their own footage in
-// admin. Left here as the intended source for a future stagedUploadsCreate path.
-const HOMEPAGE_VIDEO_URL =
-  "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+// A sample clip for the promo video slot. Its bytes are pushed to Shopify Files
+// through a staged upload (see `stageAndUploadVideo` — `fileCreate` won't ingest
+// video straight from a URL like it does images). Swapped for the brand's own
+// footage from admin, like every seeded asset.
+const HOMEPAGE_VIDEO_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
 
 // Placeholder marketing copy for the seeded homepage entry. The announcement
 // phrases mirror the storefront fallback in `lib/chrome.ts` so an unedited store
@@ -723,7 +721,11 @@ async function ensureHomepageDefinition() {
 async function findHomepageEntry() {
   const data = await gql(
     `query entry($handle: MetaobjectHandleInput!) {
-      metaobjectByHandle(handle: $handle) { id handle }
+      metaobjectByHandle(handle: $handle) {
+        id
+        handle
+        fields { key value }
+      }
     }`,
     { handle: { type: HOMEPAGE.type, handle: HOMEPAGE.handle } },
   );
@@ -748,14 +750,103 @@ async function uploadFile(url, contentType, alt) {
   return file.id;
 }
 
+// Uploads a video to Shopify Files and returns its GID. Unlike images, `fileCreate`
+// won't fetch a video from an arbitrary URL, so the bytes go through a staged
+// upload first: reserve a target, POST the file to it, then create the File from
+// the returned resource URL. Shopify processes (transcodes) the video afterwards.
+async function stageAndUploadVideo(sourceUrl, filename, alt) {
+  const res = await fetch(sourceUrl);
+  if (!res.ok) throw new Error(`fetch video failed: HTTP ${res.status}`);
+  const mimeType = res.headers.get("content-type") || "video/mp4";
+  const bytes = Buffer.from(await res.arrayBuffer());
+
+  const staged = await gql(
+    `mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets { url resourceUrl parameters { name value } }
+        userErrors { field message }
+      }
+    }`,
+    {
+      input: [
+        {
+          resource: "VIDEO",
+          filename,
+          mimeType,
+          httpMethod: "POST",
+          fileSize: String(bytes.length),
+        },
+      ],
+    },
+  );
+  assertNoUserErrors(staged.stagedUploadsCreate, "stagedUploadsCreate");
+  const target = staged.stagedUploadsCreate.stagedTargets?.[0];
+  if (!target?.url || !target.resourceUrl) {
+    throw new Error("stagedUploadsCreate returned no upload target");
+  }
+
+  // The staged target is a cloud bucket: send its signed parameters as form
+  // fields first, then the file last, exactly as returned.
+  const form = new FormData();
+  for (const { name, value } of target.parameters) form.append(name, value);
+  form.append("file", new Blob([bytes], { type: mimeType }), filename);
+
+  const upload = await fetch(target.url, { method: "POST", body: form });
+  if (!upload.ok) {
+    const detail = await upload.text().catch(() => "");
+    throw new Error(
+      `staged upload failed: HTTP ${upload.status} ${detail.slice(0, 160)}`,
+    );
+  }
+
+  return uploadFile(target.resourceUrl, "VIDEO", alt);
+}
+
+// Adds the promo video to an existing entry that lacks it. Videos need a staged
+// upload, which can fail (or wasn't supported by an earlier seed), so an entry
+// can exist without one; healing just that field never touches anything the
+// client may have edited. Best-effort — a hiccup mustn't abort the seed.
+async function ensureHomepagePromoVideo(entry) {
+  const key = HOMEPAGE.fields.promoVideo;
+  const alreadySet = entry.fields?.some(
+    (field) => field.key === key && field.value,
+  );
+  if (alreadySet) {
+    return;
+  }
+  try {
+    const value = await stageAndUploadVideo(
+      HOMEPAGE_VIDEO_URL,
+      "crazysociety-promo.mp4",
+      "CrazySociety promo",
+    );
+    const data = await gql(
+      `mutation metaobjectUpdate($id: ID!, $metaobject: MetaobjectUpdateInput!) {
+        metaobjectUpdate(id: $id, metaobject: $metaobject) {
+          metaobject { id }
+          userErrors { field message code }
+        }
+      }`,
+      { id: entry.id, metaobject: { fields: [{ key, value }] } },
+    );
+    assertNoUserErrors(data.metaobjectUpdate, "metaobjectUpdate(promo_video)");
+    console.log(`  + added promo video to ${HOMEPAGE.handle}`);
+  } catch (e) {
+    console.warn(`  ! promo video skipped: ${e.message}`);
+  }
+}
+
 // Creates the one populated homepage entry, uploading its media first. It runs
 // only when the entry is missing: the client edits this entry in admin, so a
-// re-run must be idempotent and must never clobber their content.
+// re-run must be idempotent and must never clobber their content. The lone
+// exception is a missing promo video, which is added without disturbing the rest.
 async function ensureHomepageEntry(collectionGids) {
-  if (await findHomepageEntry()) {
+  const existing = await findHomepageEntry();
+  if (existing) {
     console.log(
       `= metaobject entry exists: ${HOMEPAGE.handle} — left untouched`,
     );
+    await ensureHomepagePromoVideo(existing);
     return;
   }
 
@@ -781,14 +872,14 @@ async function ensureHomepageEntry(collectionGids) {
     value: await uploadFile(lifestyle, "IMAGE", "CrazySociety lifestyle"),
   });
 
-  // Best-effort: video ingestion from a URL is unsupported (see HOMEPAGE_VIDEO_URL),
-  // so this is expected to skip. Keep going rather than aborting the whole seed.
+  // Still best-effort: a video fetch or staged-upload hiccup shouldn't abort the
+  // whole seed — the entry can ship without the (not-yet-rendered) promo clip.
   try {
     fields.push({
       key: f.promoVideo,
-      value: await uploadFile(
+      value: await stageAndUploadVideo(
         HOMEPAGE_VIDEO_URL,
-        "VIDEO",
+        "crazysociety-promo.mp4",
         "CrazySociety promo",
       ),
     });
