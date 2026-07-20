@@ -1,3 +1,5 @@
+import { BestSellers } from "components/homepage/best-sellers";
+import { DropSection } from "components/homepage/drop-section";
 import { Hero } from "components/homepage/hero";
 import Footer from "components/layout/footer";
 import { SITE_DESCRIPTION } from "lib/brand";
@@ -16,6 +18,8 @@ export default async function HomePage() {
   return (
     <>
       <Hero homepage={homepage} />
+      <DropSection homepage={homepage} />
+      <BestSellers homepage={homepage} />
       <Footer />
     </>
   );
