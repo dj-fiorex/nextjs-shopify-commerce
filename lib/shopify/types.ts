@@ -270,3 +270,65 @@ export type ShopifyProductsOperation = {
     sortKey?: string;
   };
 };
+
+// --- Homepage metaobject ---------------------------------------------------
+
+/** A resolved reference on a metaobject field (file, video, or collection). */
+export type ShopifyMetaobjectReference = {
+  __typename: string;
+  image?: Image; // MediaImage
+  sources?: { url: string; mimeType: string }[]; // Video
+  previewImage?: Image; // Video
+  handle?: string; // Collection
+  title?: string; // Collection
+};
+
+export type ShopifyMetaobjectField = {
+  key: string;
+  value: string | null;
+  reference: ShopifyMetaobjectReference | null;
+};
+
+export type ShopifyMetaobject = {
+  id: string;
+  handle: string;
+  type: string;
+  fields: ShopifyMetaobjectField[];
+} | null;
+
+export type ShopifyHomepageOperation = {
+  data: { metaobject: ShopifyMetaobject };
+  variables: { handle: { type: string; handle: string } };
+};
+
+/** A collection referenced from the homepage entry. */
+export type HomepageCollectionRef = {
+  handle: string;
+  title: string;
+  /** Storefront route, e.g. `/search/summer-drop`. */
+  path: string;
+};
+
+export type HomepageVideo = {
+  url: string;
+  mimeType: string;
+  previewImage?: Image;
+};
+
+/**
+ * The homepage content model, reshaped from the `homepage` metaobject. Mirrors
+ * the definition the seed writes; every field is optional so the storefront can
+ * fall back gracefully when the entry (or a field) is empty or unseeded.
+ */
+export type Homepage = {
+  heroImage?: Image;
+  dropTitle?: string;
+  dropCollection?: HomepageCollectionRef;
+  lookbookImage?: Image;
+  promoVideo?: HomepageVideo;
+  bestSellersCollection?: HomepageCollectionRef;
+  lifestyleImage?: Image;
+  aboutHeading?: string;
+  aboutBody?: string;
+  announcement?: string[];
+};

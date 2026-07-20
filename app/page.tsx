@@ -1,7 +1,7 @@
-import { Carousel } from "components/carousel";
-import { ThreeItemGrid } from "components/grid/three-items";
+import { Hero } from "components/homepage/hero";
 import Footer from "components/layout/footer";
 import { SITE_DESCRIPTION } from "lib/brand";
+import { getHomepage } from "lib/shopify";
 
 export const metadata = {
   description: SITE_DESCRIPTION,
@@ -10,11 +10,12 @@ export const metadata = {
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const homepage = await getHomepage();
+
   return (
     <>
-      <ThreeItemGrid />
-      <Carousel />
+      <Hero homepage={homepage} />
       <Footer />
     </>
   );
