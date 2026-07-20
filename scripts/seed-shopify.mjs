@@ -62,9 +62,11 @@ const FOOTER_MENU = "next-js-frontend-footer-menu";
 
 const HOMEPAGE = siteConfig.metaobjects.homepage;
 
-// A small, publicly-fetchable sample clip for the promo video slot. Shopify
-// pulls it into Files server-side; like every other seeded asset it is meant to
-// be swapped for the brand's own footage from admin.
+// A sample clip for the promo video slot. Unlike images, `fileCreate` does not
+// ingest video from an arbitrary URL (Shopify wants a staged upload), so this is
+// expected to be rejected as "Invalid video url" and skipped — the promo video
+// isn't rendered yet (later ticket) and the client uploads their own footage in
+// admin. Left here as the intended source for a future stagedUploadsCreate path.
 const HOMEPAGE_VIDEO_URL =
   "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
 
@@ -779,7 +781,8 @@ async function ensureHomepageEntry(collectionGids) {
     value: await uploadFile(lifestyle, "IMAGE", "CrazySociety lifestyle"),
   });
 
-  // The video fetch can fail; keep going without it rather than aborting.
+  // Best-effort: video ingestion from a URL is unsupported (see HOMEPAGE_VIDEO_URL),
+  // so this is expected to skip. Keep going rather than aborting the whole seed.
   try {
     fields.push({
       key: f.promoVideo,
