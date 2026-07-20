@@ -73,6 +73,36 @@ type ExtractVariables<T> = T extends { variables: object }
   ? T["variables"]
   : never;
 
+// Number of times to attempt the network call before giving up.
+const STOREFRONT_FETCH_ATTEMPTS = 3;
+
+// Static prerendering runs these queries at build time, so a single dropped
+// connection to Shopify (a thrown `fetch failed`) would otherwise crash the whole
+// export. Retry the connection itself with a short backoff — never a GraphQL
+// error response, which is deterministic and handled by the caller.
+async function fetchStorefront(body: string, headers?: HeadersInit) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= STOREFRONT_FETCH_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Storefront-Access-Token": key,
+          ...headers,
+        },
+        body,
+      });
+    } catch (e) {
+      lastError = e;
+      if (attempt < STOREFRONT_FETCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function shopifyFetch<T>({
   headers,
   query,
@@ -87,18 +117,13 @@ export async function shopifyFetch<T>({
       throw new Error("SHOPIFY_STORE_DOMAIN environment variable is not set");
     }
 
-    const result = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token": key,
-        ...headers,
-      },
-      body: JSON.stringify({
+    const result = await fetchStorefront(
+      JSON.stringify({
         ...(query && { query }),
         ...(variables && { variables }),
       }),
-    });
+      headers,
+    );
 
     const body = await result.json();
 
@@ -511,12 +536,20 @@ export async function getMenu(handle: string): Promise<Menu[]> {
     return [];
   }
 
-  const res = await shopifyFetch<ShopifyMenuOperation>({
-    query: getMenuQuery,
-    variables: {
-      handle,
-    },
-  });
+  // The menu renders in the sitewide header, so it must not fault a page (or a
+  // static prerender) when the fetch fails — degrade to an empty menu instead.
+  let res;
+  try {
+    res = await shopifyFetch<ShopifyMenuOperation>({
+      query: getMenuQuery,
+      variables: {
+        handle,
+      },
+    });
+  } catch (e) {
+    console.error(`Failed to fetch menu '${handle}':`, e);
+    return [];
+  }
 
   return (
     res.body?.data?.menu?.items.map((item: { title: string; url: string }) => ({
