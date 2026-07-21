@@ -1,6 +1,9 @@
+import { AboutSection } from "components/homepage/about-section";
 import { BestSellers } from "components/homepage/best-sellers";
 import { DropSection } from "components/homepage/drop-section";
 import { Hero } from "components/homepage/hero";
+import { LifestyleSection } from "components/homepage/lifestyle-section";
+import { VideoSection } from "components/homepage/video-section";
 import Footer from "components/layout/footer";
 import { SITE_DESCRIPTION } from "lib/brand";
 import { getHomepage } from "lib/shopify";
@@ -19,7 +22,10 @@ export default async function HomePage() {
     <>
       <Hero homepage={homepage} />
       <DropSection homepage={homepage} />
+      <VideoSection homepage={homepage} />
       <BestSellers homepage={homepage} />
+      <LifestyleSection homepage={homepage} />
+      <AboutSection homepage={homepage} />
       <Footer />
     </>
   );
