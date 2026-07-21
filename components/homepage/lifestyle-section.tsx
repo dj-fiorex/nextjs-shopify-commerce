@@ -1,3 +1,4 @@
+import { SITE_NAME } from "lib/brand";
 import type { Homepage } from "lib/shopify/types";
 import Image from "next/image";
 
@@ -21,7 +22,7 @@ export function LifestyleSection({ homepage }: { homepage?: Homepage }) {
     <section className="relative aspect-[4/5] w-full sm:aspect-[16/9]">
       <Image
         src={image.url}
-        alt={image.altText}
+        alt={image.altText || `${SITE_NAME} lifestyle`}
         fill
         sizes="100vw"
         className="object-cover"
