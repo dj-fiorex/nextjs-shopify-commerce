@@ -1,5 +1,4 @@
-import Grid from "components/grid";
-import ProductGridItems from "components/layout/product-grid-items";
+import { ProductGrid } from "components/product/product-grid";
 import { defaultSort, sorting } from "lib/constants";
 import { getProducts } from "lib/shopify";
 
@@ -13,6 +12,8 @@ export default async function SearchPage(props: {
 }) {
   const searchParams = await props.searchParams;
   const { sort, q: searchValue } = searchParams as { [key: string]: string };
+  // The sort dropdown is gone (issue #8), but the `sort` param still drives the
+  // query so a header search or a linked-in sort keeps working as the catalog grows.
   const { sortKey, reverse } =
     sorting.find((item) => item.slug === sort) || defaultSort;
 
@@ -22,18 +23,14 @@ export default async function SearchPage(props: {
   return (
     <>
       {searchValue ? (
-        <p className="mb-4">
+        <p className="mb-8 font-mono text-xs tracking-widest text-neutral-500 uppercase">
           {products.length === 0
-            ? "There are no products that match "
-            : `Showing ${products.length} ${resultsText} for `}
-          <span className="font-bold">&quot;{searchValue}&quot;</span>
+            ? "No products match "
+            : `${products.length} ${resultsText} for `}
+          <span className="text-brand-ink">&quot;{searchValue}&quot;</span>
         </p>
       ) : null}
-      {products.length > 0 ? (
-        <Grid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          <ProductGridItems products={products} />
-        </Grid>
-      ) : null}
+      {products.length > 0 ? <ProductGrid products={products} /> : null}
     </>
   );
 }
