@@ -48,8 +48,10 @@ export function VariantSelector({
   return options.map((option) => (
     <form key={option.id}>
       <dl className="mb-8">
-        <dt className="mb-4 text-sm uppercase tracking-wide">{option.name}</dt>
-        <dd className="flex flex-wrap gap-3">
+        <dt className="mb-3 font-mono text-xs tracking-widest text-brand-ink uppercase">
+          {option.name}
+        </dt>
+        <dd className="flex flex-wrap gap-2">
           {option.values.map((value) => {
             const optionNameLowerCase = option.name.toLowerCase();
 
@@ -83,14 +85,15 @@ export function VariantSelector({
                 key={value}
                 aria-disabled={!isAvailableForSale}
                 disabled={!isAvailableForSale}
-                title={`${option.name} ${value}${!isAvailableForSale ? " (Out of Stock)" : ""}`}
+                title={`${option.name} ${value}${!isAvailableForSale ? " (Sold out)" : ""}`}
                 className={clsx(
-                  "flex min-w-[48px] items-center justify-center rounded-full border bg-neutral-100 px-2 py-1 text-sm",
+                  "flex h-11 min-w-11 items-center justify-center border px-3 font-mono text-sm uppercase",
                   {
-                    "cursor-default ring-2 ring-brand-ink": isActive,
-                    "ring-1 ring-transparent transition duration-300 ease-in-out hover:ring-brand-ink":
+                    "cursor-default border-brand-ink bg-brand-ink text-brand-base":
+                      isActive,
+                    "border-neutral-300 bg-brand-base text-brand-ink transition-colors hover:border-brand-ink":
                       !isActive && isAvailableForSale,
-                    "relative z-10 cursor-not-allowed overflow-hidden bg-neutral-100 text-neutral-500 ring-1 ring-neutral-300 before:absolute before:inset-x-0 before:-z-10 before:h-px before:-rotate-45 before:bg-neutral-300 before:transition-transform":
+                    "cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-400 line-through":
                       !isAvailableForSale,
                   },
                 )}

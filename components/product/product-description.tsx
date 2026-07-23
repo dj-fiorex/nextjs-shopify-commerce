@@ -1,27 +1,33 @@
 import { AddToCart } from "components/cart/add-to-cart";
 import Price from "components/price";
-import Prose from "components/prose";
 import { Product } from "lib/shopify/types";
+import { ProductSpecs } from "./product-specs";
 import { VariantSelector } from "./variant-selector";
 
+/**
+ * The PDP buy box (issue #9): mono uppercase title and EUR price, the size
+ * selector, the spec lines, then the add-to-cart into the existing cart
+ * overlay — the concept's product column, in the order the mockup lists it.
+ */
 export function ProductDescription({ product }: { product: Product }) {
   return (
     <>
-      <div className="mb-6 flex flex-col border-b pb-6">
-        <h1 className="mb-2 text-5xl font-medium">{product.title}</h1>
-        <div className="mr-auto w-auto rounded-full bg-brand-ink p-2 text-sm text-white">
-          <Price
-            amount={product.priceRange.maxVariantPrice.amount}
-            currencyCode={product.priceRange.maxVariantPrice.currencyCode}
-          />
-        </div>
+      <div className="mb-8 flex flex-col gap-3 border-b border-neutral-200 pb-8">
+        <h1 className="font-mono text-2xl tracking-[0.15em] text-brand-ink uppercase sm:text-3xl">
+          {product.title}
+        </h1>
+        <Price
+          className="text-base text-brand-ink"
+          amount={product.priceRange.maxVariantPrice.amount}
+          currencyCode={product.priceRange.maxVariantPrice.currencyCode}
+          currencyCodeClassName="text-neutral-500"
+        />
       </div>
       <VariantSelector options={product.options} variants={product.variants} />
       {product.descriptionHtml ? (
-        <Prose
-          className="mb-6 text-sm leading-tight"
-          html={product.descriptionHtml}
-        />
+        <div className="mb-8">
+          <ProductSpecs descriptionHtml={product.descriptionHtml} />
+        </div>
       ) : null}
       <AddToCart product={product} />
     </>

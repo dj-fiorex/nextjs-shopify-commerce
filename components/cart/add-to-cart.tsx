@@ -1,6 +1,5 @@
 "use client";
 
-import { PlusIcon } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import { addItem } from "components/cart/actions";
 import { Product, ProductVariant } from "lib/shopify/types";
@@ -8,6 +7,12 @@ import { useSearchParams } from "next/navigation";
 import { useActionState } from "react";
 import { useCart } from "./cart-context";
 
+/**
+ * The PDP purchase button in the brand treatment (issue #9): a full-width ink
+ * block with mono uppercase copy. A fully sold-out product reads "Sold out",
+ * disabled; with no size picked yet the button waits, disabled, until the
+ * shopper chooses.
+ */
 function SubmitButton({
   availableForSale,
   selectedVariantId,
@@ -15,44 +20,26 @@ function SubmitButton({
   availableForSale: boolean;
   selectedVariantId: string | undefined;
 }) {
-  const buttonClasses =
-    "relative flex w-full items-center justify-center rounded-full bg-brand-ink p-4 tracking-wide text-white";
-  const disabledClasses = "cursor-not-allowed opacity-60 hover:opacity-60";
-
-  if (!availableForSale) {
-    return (
-      <button disabled className={clsx(buttonClasses, disabledClasses)}>
-        Out Of Stock
-      </button>
-    );
-  }
-
-  if (!selectedVariantId) {
-    return (
-      <button
-        aria-label="Please select an option"
-        disabled
-        className={clsx(buttonClasses, disabledClasses)}
-      >
-        <div className="absolute left-0 ml-4">
-          <PlusIcon className="h-5" />
-        </div>
-        Add To Cart
-      </button>
-    );
-  }
+  const disabled = !availableForSale || !selectedVariantId;
 
   return (
     <button
-      aria-label="Add to cart"
-      className={clsx(buttonClasses, {
-        "hover:opacity-90": true,
-      })}
+      aria-label={
+        !availableForSale
+          ? "Sold out"
+          : !selectedVariantId
+            ? "Please select an option"
+            : "Add to cart"
+      }
+      disabled={disabled}
+      className={clsx(
+        "flex w-full items-center justify-center bg-brand-ink px-6 py-4 font-mono text-sm tracking-widest text-brand-base uppercase",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "transition-opacity hover:opacity-80",
+      )}
     >
-      <div className="absolute left-0 ml-4">
-        <PlusIcon className="h-5" />
-      </div>
-      Add To Cart
+      {availableForSale ? "Add to cart" : "Sold out"}
     </button>
   );
 }

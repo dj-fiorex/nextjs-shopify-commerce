@@ -1,12 +1,12 @@
-import { GridTileImage } from "components/grid/tile";
+import { SectionHeading } from "components/homepage/section-heading";
 import Footer from "components/layout/footer";
 import { Gallery } from "components/product/gallery";
+import { ProductCard } from "components/product/product-card";
 import { ProductDescription } from "components/product/product-description";
 import { HIDDEN_PRODUCT_TAG } from "lib/constants";
 import { getProduct, getProductRecommendations } from "lib/shopify";
 import type { Image } from "lib/shopify/types";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
@@ -80,16 +80,16 @@ export default async function ProductPage(props: {
           __html: JSON.stringify(productJsonLd),
         }}
       />
-      <div className="mx-auto max-w-(--breakpoint-2xl) px-4">
-        <div className="flex flex-col rounded-lg border border-neutral-200 bg-white p-8 md:p-12 lg:flex-row lg:gap-8">
-          <div className="h-full w-full basis-full lg:basis-4/6">
+      <div className="mx-auto w-full max-w-7xl px-6 py-8 min-[1320px]:px-0">
+        <div className="flex flex-col gap-10 lg:flex-row lg:gap-12">
+          <div className="w-full lg:basis-3/5">
             <Suspense
               fallback={
-                <div className="relative aspect-square h-full max-h-[550px] w-full overflow-hidden" />
+                <div className="relative aspect-square w-full bg-neutral-100" />
               }
             >
               <Gallery
-                images={product.images.slice(0, 5).map((image: Image) => ({
+                images={product.images.map((image: Image) => ({
                   src: image.url,
                   altText: image.altText,
                 }))}
@@ -97,7 +97,7 @@ export default async function ProductPage(props: {
             </Suspense>
           </div>
 
-          <div className="basis-full lg:basis-2/6">
+          <div className="w-full lg:basis-2/5">
             <Suspense fallback={null}>
               <ProductDescription product={product} />
             </Suspense>
@@ -110,40 +110,28 @@ export default async function ProductPage(props: {
   );
 }
 
+/**
+ * Recommendations under the buy area (issue #9), rendered with the shared
+ * product card so names, EUR prices, and sold-out badges read like every other
+ * grid on the site.
+ */
 async function RelatedProducts({ id }: { id: string }) {
   const relatedProducts = await getProductRecommendations(id);
 
   if (!relatedProducts.length) return null;
 
   return (
-    <div className="py-8">
-      <h2 className="mb-4 text-2xl font-bold">Related Products</h2>
-      <ul className="flex w-full gap-4 overflow-x-auto pt-1">
-        {relatedProducts.map((product) => (
-          <li
+    <section className="pt-20 pb-8">
+      <SectionHeading title="Related products" />
+      <div className="grid grid-cols-2 gap-x-4 gap-y-10 sm:gap-x-6 lg:grid-cols-4">
+        {relatedProducts.slice(0, 4).map((product) => (
+          <ProductCard
             key={product.handle}
-            className="aspect-square w-full flex-none min-[475px]:w-1/2 sm:w-1/3 md:w-1/4 lg:w-1/5"
-          >
-            <Link
-              className="relative h-full w-full"
-              href={`/product/${product.handle}`}
-              prefetch={true}
-            >
-              <GridTileImage
-                alt={product.title}
-                label={{
-                  title: product.title,
-                  amount: product.priceRange.maxVariantPrice.amount,
-                  currencyCode: product.priceRange.maxVariantPrice.currencyCode,
-                }}
-                src={product.featuredImage?.url}
-                fill
-                sizes="(min-width: 1024px) 20vw, (min-width: 768px) 25vw, (min-width: 640px) 33vw, (min-width: 475px) 50vw, 100vw"
-              />
-            </Link>
-          </li>
+            product={product}
+            sizes="(min-width: 1024px) 25vw, 50vw"
+          />
         ))}
-      </ul>
-    </div>
+      </div>
+    </section>
   );
 }
