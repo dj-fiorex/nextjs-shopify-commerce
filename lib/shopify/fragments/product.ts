@@ -1,5 +1,10 @@
+import { siteConfig } from "lib/site-config.mjs";
 import imageFragment from "./image";
 import seoFragment from "./seo";
+
+// Metafield coordinates (namespace/key) are interpolated into the query text
+// because GraphQL fragments cannot take variables.
+const sizeChartMetafield = siteConfig.metafields.sizeChart;
 
 const productFragment = /* GraphQL */ `
   fragment product on Product {
@@ -48,6 +53,15 @@ const productFragment = /* GraphQL */ `
       edges {
         node {
           ...image
+        }
+      }
+    }
+    sizeChart: metafield(namespace: "${sizeChartMetafield.namespace}", key: "${sizeChartMetafield.key}") {
+      reference {
+        ... on MediaImage {
+          image {
+            ...image
+          }
         }
       }
     }

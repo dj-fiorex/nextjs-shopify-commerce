@@ -68,9 +68,14 @@ export type Page = {
   updatedAt: string;
 };
 
-export type Product = Omit<ShopifyProduct, "variants" | "images"> & {
+export type Product = Omit<
+  ShopifyProduct,
+  "variants" | "images" | "sizeChart"
+> & {
   variants: ProductVariant[];
   images: Image[];
+  /** The size-chart metafield image; absent when the product has no chart. */
+  sizeChart?: Image;
 };
 
 export type ProductOption = {
@@ -130,6 +135,13 @@ export type ShopifyProduct = {
   variants: Connection<ProductVariant>;
   featuredImage: Image;
   images: Connection<Image>;
+  /**
+   * The size-chart file metafield (see `siteConfig.metafields.sizeChart`).
+   * `image` is only present when the reference resolved to a MediaImage.
+   */
+  sizeChart: {
+    reference: { image?: Image | null } | null;
+  } | null;
   seo: SEO;
   tags: string[];
   updatedAt: string;

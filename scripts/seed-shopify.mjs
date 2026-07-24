@@ -13,6 +13,9 @@
  *                  client edits from admin (hero/lookbook/promo video/lifestyle
  *                  media uploaded to Shopify Files, drop + best-sellers refs,
  *                  About Us copy, announcement text)
+ *   - Size charts: a product file-metafield definition (`custom.size_chart`)
+ *                  plus a placeholder chart attached to every catalog product
+ *                  missing one; the client swaps in real charts from admin
  *   - Pages:       about, terms-conditions, shipping-return-policy,
  *                  privacy-policy, frequently-asked-questions
  *   - Sample products (only if the store has fewer than 3), published to all
@@ -61,6 +64,7 @@ const HEADER_MENU = "next-js-frontend-header-menu";
 const FOOTER_MENU = "next-js-frontend-footer-menu";
 
 const HOMEPAGE = siteConfig.metaobjects.homepage;
+const SIZE_CHART = siteConfig.metafields.sizeChart;
 
 // A sample clip for the promo video slot. Its bytes are pushed to Shopify Files
 // through a staged upload (see `stageAndUploadVideo` — `fileCreate` won't ingest
@@ -419,6 +423,10 @@ async function ensureCatalogProducts(publications) {
   return ids;
 }
 
+// Admin API search query matching exactly the catalog products, by handle.
+const catalogHandlesQuery = () =>
+  CRAZYSOCIETY_PRODUCTS.map((p) => `handle:${p.handle}`).join(" OR ");
+
 // Covers the product-created-but-image-fetch-failed case above: without this a
 // blank product would survive every future run, since the handle already exists.
 async function ensureCatalogImages() {
@@ -428,7 +436,7 @@ async function ensureCatalogImages() {
         nodes { id handle media(first: 1) { nodes { id } } }
       }
     }`,
-    { q: CRAZYSOCIETY_PRODUCTS.map((p) => `handle:${p.handle}`).join(" OR ") },
+    { q: catalogHandlesQuery() },
   );
 
   const blank = data.products.nodes.filter((n) => !n.media.nodes.length);
@@ -922,6 +930,158 @@ async function ensureHomepageEntry(collectionGids) {
   );
 }
 
+// --- size-chart metafield -------------------------------------------------
+
+// Placeholder chart attached to seeded products, replaced from admin like
+// every other seeded asset. A labelled placeholder rather than a picsum photo,
+// so an unedited PDP modal still reads as a size chart.
+const SIZE_CHART_PLACEHOLDER_URL =
+  "https://placehold.co/1200x1500/jpg?text=Size+Chart";
+
+// The definition that makes the chart editable per product from admin.
+// `PUBLIC_READ` storefront access is what lets the PDP's product query read the
+// metafield — without it the Size Chart button would never render. The Image
+// validation keeps the slot to something the modal can actually display.
+async function ensureSizeChartDefinition() {
+  const label = `${SIZE_CHART.namespace}.${SIZE_CHART.key}`;
+  const existing = await gql(
+    `query def($namespace: String!, $key: String!) {
+      metafieldDefinitions(first: 1, ownerType: PRODUCT, namespace: $namespace, key: $key) {
+        nodes { id access { storefront } }
+      }
+    }`,
+    { namespace: SIZE_CHART.namespace, key: SIZE_CHART.key },
+  );
+  const found = existing.metafieldDefinitions.nodes[0];
+  if (found) {
+    if (found.access?.storefront === "PUBLIC_READ") {
+      console.log(`= metafield definition exists: ${label}`);
+      return;
+    }
+    // A definition created by hand (e.g. from admin, before this seed ran)
+    // may lack storefront access, which silently breaks the whole feature.
+    // Heal just that setting; the definition itself is left as the client
+    // made it. Best-effort — a hiccup here mustn't abort the seed.
+    try {
+      const healed = await gql(
+        `mutation defUpdate($definition: MetafieldDefinitionUpdateInput!) {
+          metafieldDefinitionUpdate(definition: $definition) {
+            updatedDefinition { id }
+            userErrors { field message code }
+          }
+        }`,
+        {
+          definition: {
+            namespace: SIZE_CHART.namespace,
+            key: SIZE_CHART.key,
+            ownerType: "PRODUCT",
+            access: { storefront: "PUBLIC_READ" },
+          },
+        },
+      );
+      assertNoUserErrors(
+        healed.metafieldDefinitionUpdate,
+        `metafieldDefinitionUpdate(${label})`,
+      );
+      console.log(
+        `= metafield definition exists: ${label} — enabled storefront access`,
+      );
+    } catch (e) {
+      console.warn(
+        `! ${label} exists without storefront access and enabling it failed: ${e.message}\n` +
+          "  The Size Chart button will not render until the definition allows\n" +
+          "  storefront reads (admin: Settings > Custom data > Products > Size chart).",
+      );
+    }
+    return;
+  }
+
+  const data = await gql(
+    `mutation defCreate($definition: MetafieldDefinitionInput!) {
+      metafieldDefinitionCreate(definition: $definition) {
+        createdDefinition { id }
+        userErrors { field message code }
+      }
+    }`,
+    {
+      definition: {
+        name: "Size chart",
+        namespace: SIZE_CHART.namespace,
+        key: SIZE_CHART.key,
+        description:
+          "Size chart image opened from the Size Chart button on the product page.",
+        type: "file_reference",
+        ownerType: "PRODUCT",
+        access: { storefront: "PUBLIC_READ" },
+        validations: [
+          { name: "file_type_options", value: JSON.stringify(["Image"]) },
+        ],
+      },
+    },
+  );
+  assertNoUserErrors(
+    data.metafieldDefinitionCreate,
+    `metafieldDefinitionCreate(${label})`,
+  );
+  console.log(`+ created metafield definition: ${label}`);
+}
+
+// Attaches the placeholder chart to catalog products that don't have one yet.
+// The check is per product, so re-runs only fill gaps — a real chart the
+// client has set in admin is never touched. One shared placeholder file backs
+// every gap, and it is only uploaded when there is a gap to fill.
+async function ensureSizeCharts() {
+  const data = await gql(
+    `query charts($q: String!, $namespace: String!, $key: String!) {
+      products(first: 50, query: $q) {
+        nodes { id handle metafield(namespace: $namespace, key: $key) { id } }
+      }
+    }`,
+    {
+      q: catalogHandlesQuery(),
+      namespace: SIZE_CHART.namespace,
+      key: SIZE_CHART.key,
+    },
+  );
+
+  const missing = data.products.nodes.filter((node) => !node.metafield);
+  if (!missing.length) {
+    console.log("All catalog products already have a size chart.");
+    return;
+  }
+
+  console.log(
+    `Attaching placeholder size charts to ${missing.length} product(s)...`,
+  );
+  const fileId = await uploadFile(
+    SIZE_CHART_PLACEHOLDER_URL,
+    "IMAGE",
+    "Size chart placeholder",
+  );
+
+  const result = await gql(
+    `mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { id }
+        userErrors { field message code }
+      }
+    }`,
+    {
+      metafields: missing.map((node) => ({
+        ownerId: node.id,
+        namespace: SIZE_CHART.namespace,
+        key: SIZE_CHART.key,
+        type: "file_reference",
+        value: fileId,
+      })),
+    },
+  );
+  assertNoUserErrors(result.metafieldsSet, "metafieldsSet(size_chart)");
+  for (const node of missing) {
+    console.log(`  + size chart set: ${node.handle}`);
+  }
+}
+
 // --- main ----------------------------------------------------------------
 
 try {
@@ -994,6 +1154,12 @@ try {
     summerDrop: summerDropGid,
     bestSellers: bestSellersGid,
   });
+
+  // Size charts: the metafield definition + placeholder charts on catalog
+  // products that lack one. The client replaces them with real measurement
+  // charts from admin, product by product.
+  await ensureSizeChartDefinition();
+  await ensureSizeCharts();
 
   const pages = await ensurePages();
 

@@ -211,6 +211,21 @@ const reshapeImages = (images: Connection<Image>, productTitle: string) => {
   });
 };
 
+// The chart renders through next/image, which needs intrinsic dimensions — a
+// reference without them (file still processing, or not an image) is treated
+// as absent so the PDP hides its Size Chart button instead of erroring.
+const reshapeSizeChart = (
+  sizeChart: ShopifyProduct["sizeChart"],
+  productTitle: string,
+): Image | undefined => {
+  const image = sizeChart?.reference?.image;
+  if (!image?.url || !image.width || !image.height) {
+    return undefined;
+  }
+
+  return { ...image, altText: image.altText || `${productTitle} size chart` };
+};
+
 const reshapeProduct = (
   product: ShopifyProduct,
   filterHiddenProducts: boolean = true,
@@ -222,12 +237,13 @@ const reshapeProduct = (
     return undefined;
   }
 
-  const { images, variants, ...rest } = product;
+  const { images, variants, sizeChart, ...rest } = product;
 
   return {
     ...rest,
     images: reshapeImages(images, product.title),
     variants: removeEdgesAndNodes(variants),
+    sizeChart: reshapeSizeChart(sizeChart, product.title),
   };
 };
 

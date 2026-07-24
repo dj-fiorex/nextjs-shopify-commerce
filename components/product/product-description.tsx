@@ -2,6 +2,7 @@ import { AddToCart } from "components/cart/add-to-cart";
 import Price from "components/price";
 import { Product } from "lib/shopify/types";
 import { ProductSpecs } from "./product-specs";
+import { SizeChart } from "./size-chart";
 import { VariantSelector } from "./variant-selector";
 
 /**
@@ -24,6 +25,11 @@ export function ProductDescription({ product }: { product: Product }) {
         />
       </div>
       <VariantSelector options={product.options} variants={product.variants} />
+      {product.sizeChart ? (
+        <div className="mb-8">
+          <SizeChart image={product.sizeChart} />
+        </div>
+      ) : null}
       {product.descriptionHtml ? (
         <div className="mb-8">
           <ProductSpecs descriptionHtml={product.descriptionHtml} />
