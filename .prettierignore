@@ -1,0 +1,7 @@
+# Vendored agent-skill docs and agent worktrees — not this repo's code style.
+.agents/
+.claude/
+
+# Generated
+.next/
+pnpm-lock.yaml
