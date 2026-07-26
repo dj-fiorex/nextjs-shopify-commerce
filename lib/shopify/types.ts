@@ -1,5 +1,14 @@
 export type Maybe<T> = T | null;
 
+/**
+ * The variables of an operation type below, for the two GraphQL clients
+ * (`index.ts` over the Storefront API, `admin.ts` over the Admin API) to derive
+ * their `variables` parameter from the operation they're handed.
+ */
+export type ExtractVariables<T> = T extends { variables: object }
+  ? T["variables"]
+  : never;
+
 export type Connection<T> = {
   edges: Array<Edge<T>>;
 };
@@ -343,4 +352,74 @@ export type Homepage = {
   aboutHeading?: string;
   aboutBody?: string;
   announcement?: string[];
+};
+
+// --- Customers (Admin API) -------------------------------------------------
+//
+// Only the newsletter signup touches these; every other Shopify type above is
+// read from the Storefront API.
+
+/** The shared shape of a mutation's `userErrors` entry. */
+export type ShopifyUserError = {
+  field: string[] | null;
+  message: string;
+};
+
+export type ShopifyCustomerMarketingState =
+  | "SUBSCRIBED"
+  | "NOT_SUBSCRIBED"
+  | "PENDING"
+  | "UNSUBSCRIBED"
+  | "REDACTED"
+  | "INVALID";
+
+export type ShopifyCustomer = {
+  id: string;
+  email: string | null;
+  emailMarketingConsent: {
+    marketingState: ShopifyCustomerMarketingState;
+  } | null;
+};
+
+export type ShopifyCustomerByEmailOperation = {
+  data: {
+    customerByIdentifier: ShopifyCustomer | null;
+  };
+  variables: { identifier: { emailAddress: string } };
+};
+
+export type ShopifyEmailMarketingConsentInput = {
+  marketingState: "SUBSCRIBED";
+  marketingOptInLevel: "SINGLE_OPT_IN";
+  consentUpdatedAt: string;
+};
+
+export type ShopifyCustomerCreateOperation = {
+  data: {
+    customerCreate: {
+      customer: ShopifyCustomer | null;
+      userErrors: ShopifyUserError[];
+    };
+  };
+  variables: {
+    input: {
+      email: string;
+      emailMarketingConsent: ShopifyEmailMarketingConsentInput;
+    };
+  };
+};
+
+export type ShopifyCustomerEmailMarketingConsentUpdateOperation = {
+  data: {
+    customerEmailMarketingConsentUpdate: {
+      customer: ShopifyCustomer | null;
+      userErrors: ShopifyUserError[];
+    };
+  };
+  variables: {
+    input: {
+      customerId: string;
+      emailMarketingConsent: ShopifyEmailMarketingConsentInput;
+    };
+  };
 };

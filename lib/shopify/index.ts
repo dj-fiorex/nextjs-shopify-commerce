@@ -37,6 +37,7 @@ import {
   Cart,
   Collection,
   Connection,
+  ExtractVariables,
   Homepage,
   Image,
   Menu,
@@ -68,10 +69,6 @@ const domain = process.env.SHOPIFY_STORE_DOMAIN
   : "";
 const endpoint = domain ? `${domain}${SHOPIFY_GRAPHQL_API_ENDPOINT}` : "";
 const key = process.env.SHOPIFY_STOREFRONT_ACCESS_TOKEN!;
-
-type ExtractVariables<T> = T extends { variables: object }
-  ? T["variables"]
-  : never;
 
 // Number of times to attempt the network call before giving up.
 const STOREFRONT_FETCH_ATTEMPTS = 3;

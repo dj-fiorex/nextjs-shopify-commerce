@@ -28,6 +28,9 @@
  *     read_publications, write_publications, write_online_store_navigation,
  *     write_content, write_files, read_metaobject_definitions,
  *     write_metaobject_definitions, read_metaobjects, write_metaobjects.
+ *     Add read_customers + write_customers to the same app while you are
+ *     there: the seed doesn't use them, but the storefront's newsletter signup
+ *     shares these credentials and cannot write a subscriber without them.
  *     Either:
  *       SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET  (from the app's Settings
  *         page — the script exchanges them for a 24h admin token), or

@@ -55,3 +55,9 @@ export const DEFAULT_OPTION = "Default Title";
 // support window now, so we move to a current, supported version instead; the
 // existing product/collection/cart queries were re-verified against it.
 export const SHOPIFY_GRAPHQL_API_ENDPOINT = "/api/2025-01/graphql.json";
+// The newsletter signup (issue #11) writes a customer with email-marketing
+// consent, which only the Admin API can do — the Storefront API's customer
+// mutations create a password-backed account instead. Pinned to the same
+// version `scripts/seed-shopify.mjs` uses so both Admin callers move together.
+export const SHOPIFY_ADMIN_GRAPHQL_API_ENDPOINT =
+  "/admin/api/2025-10/graphql.json";

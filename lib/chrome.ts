@@ -68,6 +68,35 @@ export const FOOTER_GROUPS: FooterGroup[] = [
   },
 ];
 
+/**
+ * The newsletter block above the footer (issue #11). Every string the form can
+ * show lives here — including its success and failure lines — so the copy stays
+ * structured for later localisation and the component holds only layout.
+ *
+ * The privacy note is split around its link because the link sits mid-sentence;
+ * a translation reorders `before`/`after` rather than the markup.
+ */
+export const NEWSLETTER = {
+  heading: "Newsletter",
+  body: "Join the list and hear about the next drop before it sells out.",
+  emailLabel: "Email address",
+  placeholder: "your@email.com",
+  submit: "Subscribe",
+  submitting: "Subscribing",
+  success: "You're on the list. Watch your inbox for the next drop.",
+  errors: {
+    invalidEmail: "That doesn't look like a valid email address.",
+    failed: "Something went wrong. Please try again.",
+  },
+  privacyNote: {
+    before: "We use your email to send drop news. See our ",
+    linkLabel: "privacy policy",
+    after: " for the details.",
+    // Shopify pages render at `/<handle>` (see `app/[page]/page.tsx`).
+    href: "/privacy-policy",
+  },
+} as const;
+
 export type SocialIcon = "instagram" | "tiktok" | "facebook";
 
 export type SocialLink = {
