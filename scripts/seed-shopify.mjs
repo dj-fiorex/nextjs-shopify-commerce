@@ -96,13 +96,9 @@ const SAMPLE_PRODUCTS = [
   { handle: "acme-sticker", title: "Acme Sticker", price: "4.00" },
 ];
 
-const PAGES = [
-  { handle: "about", title: "About" },
-  { handle: "terms-conditions", title: "Terms & Conditions" },
-  { handle: "shipping-return-policy", title: "Shipping & Return Policy" },
-  { handle: "privacy-policy", title: "Privacy Policy" },
-  { handle: "frequently-asked-questions", title: "Frequently Asked Questions" },
-];
+// Every page the footer links to, straight from the shared config — a link in
+// `lib/chrome.ts` and the page seeded here are two halves of the same handle.
+const PAGES = Object.values(siteConfig.pages);
 
 // --- env ---------------------------------------------------------------
 

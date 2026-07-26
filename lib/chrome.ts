@@ -10,6 +10,8 @@
  * metaobject in a later ticket").
  */
 
+import { siteConfig } from "lib/site-config.mjs";
+
 export type NavLink = {
   label: string;
   href: string;
@@ -21,6 +23,15 @@ export type FooterGroup = {
   heading: string;
   links: NavLink[];
 };
+
+/**
+ * The storefront route for one of the store's content pages. Shopify pages
+ * render at `/<handle>` through `app/[page]/page.tsx` — a single dynamic
+ * segment, so a `/pages/...` href would 404. Taking the handle from
+ * `siteConfig` keeps every chrome link pointing at a page the seed creates.
+ */
+const pagePath = (page: keyof typeof siteConfig.pages) =>
+  `/${siteConfig.pages[page].handle}`;
 
 /**
  * The announcement-bar messages, shown space-separated on every page. Static
@@ -36,34 +47,34 @@ export const ANNOUNCEMENT_MESSAGES = [
 /**
  * Footer link groups (SERVICE / LEGAL / MORE), matching the concept.
  *
- * Hrefs point at the pages the seed creates (`/pages/<handle>`). A few items
- * the concept names — Contact, Cookie preferences — are not seeded as pages
- * yet; the links still render so the chrome matches the mockup, and pointing
- * the seed at them is a content follow-up, not chrome scope.
+ * Every page link is built with `pagePath`, so the label is this file's
+ * business and the handle is `siteConfig`'s. The labels stay shorter than the
+ * page titles the seed writes ("Shipping policy" for "Shipping & Return
+ * Policy") because that is what the concept's footer reads.
  */
 export const FOOTER_GROUPS: FooterGroup[] = [
   {
     heading: "Service",
     links: [
-      { label: "Contact", href: "/pages/contact" },
-      { label: "Shipping policy", href: "/pages/shipping-return-policy" },
-      { label: "Cookie preferences", href: "/pages/cookie-preferences" },
+      { label: "Contact", href: pagePath("contact") },
+      { label: "Shipping policy", href: pagePath("shippingPolicy") },
+      { label: "Cookie preferences", href: pagePath("cookiePreferences") },
     ],
   },
   {
     heading: "Legal",
     links: [
-      { label: "Privacy policy", href: "/pages/privacy-policy" },
-      { label: "Terms of service", href: "/pages/terms-conditions" },
-      { label: "Refund policy", href: "/pages/refund-policy" },
+      { label: "Privacy policy", href: pagePath("privacyPolicy") },
+      { label: "Terms of service", href: pagePath("termsOfService") },
+      { label: "Refund policy", href: pagePath("refundPolicy") },
     ],
   },
   {
     heading: "More",
     links: [
       { label: "All products", href: "/search" },
-      { label: "About", href: "/pages/about" },
-      { label: "FAQ", href: "/pages/frequently-asked-questions" },
+      { label: "About", href: pagePath("about") },
+      { label: "FAQ", href: pagePath("faq") },
     ],
   },
 ];
@@ -92,8 +103,7 @@ export const NEWSLETTER = {
     before: "We use your email to send drop news. See our ",
     linkLabel: "privacy policy",
     after: " for the details.",
-    // Shopify pages render at `/<handle>` (see `app/[page]/page.tsx`).
-    href: "/privacy-policy",
+    href: pagePath("privacyPolicy"),
   },
 } as const;
 
